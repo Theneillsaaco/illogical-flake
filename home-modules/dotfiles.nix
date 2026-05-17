@@ -95,13 +95,14 @@ in
           --replace-fail "font=JetBrainsMono Nerd Font:size=11" "font=JetBrainsMono Nerd Font:size=14" \
           --replace-fail "pad=25x25" "pad=25x25
 
-            [colors]
+            [colors-dark]
             alpha=0.85" \
           --replace-fail "clipboard-copy=Control+c" "clipboard-copy=Control+Shift+c" \
           --replace-fail "clipboard-paste=Control+v" "clipboard-paste=Control+Shift+v" \
           --replace-fail "\x03=Control+Shift+c" "\x03=Control+c"
       '';
       "fuzzel".source = "${dotfilesSource}/dots/.config/fuzzel";
+      
       # Hyprland Config
       # Use text/readFile to put the file in the HM generation directory
       # This ensures relative sources (like hyprland/env.conf) resolve to OUR patched files
@@ -146,9 +147,11 @@ in
       "hypr/hyprland/variables.lua".source = "${dotfilesSource}/dots/.config/hypr/hyprland/variables.lua";
       "hypr/hyprland/lib".source = "${dotfilesSource}/dots/.config/hypr/hyprland/lib";
       "hypr/hyprland/services".source = "${dotfilesSource}/dots/.config/hypr/hyprland/services";
-      "hypr/hyprland/shellOverrides".source = "${dotfilesSource}/dots/.config/hypr/hyprland/shellOverrides";
+      # shellOverrides/main.lua must be a MUTABLE file because hyprconfigurator.py
+      # writes to it at runtime (game mode, animations toggles, etc.).
+      # The whole dir is handled in the activation script below instead of a symlink.
       "hypr/hyprland/scripts".source = "${dotfilesSource}/dots/.config/hypr/hyprland/scripts";
-
+      
       # Symlink custom siblings.
       "hypr/custom/env.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/env.lua";
       "hypr/custom/execs.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/execs.lua";
@@ -333,6 +336,37 @@ in
           fi
           $DRY_RUN_CMD cp "$file" "$konsoleTarget/$filename"
           $DRY_RUN_CMD chmod u+w "$konsoleTarget/$filename"
+      done
+
+      # Handle shellOverrides — the directory is read-only upstream, but
+      # main.lua must be writable so hyprconfigurator.py (game mode, toggles) can edit it.
+      shellOverridesTarget="$targetPath/hypr/hyprland/shellOverrides"
+      shellOverridesSource="$configPath/hypr/hyprland/shellOverrides"
+
+      # Remove old symlink if HM previously managed it as a whole-dir symlink
+      if [ -L "$shellOverridesTarget" ]; then
+          $DRY_RUN_CMD rm "$shellOverridesTarget"
+      fi
+      $DRY_RUN_CMD mkdir -p "$shellOverridesTarget"
+
+      # Symlink every file in shellOverrides EXCEPT main.lua
+      for file in "$shellOverridesSource"/*; do
+          filename=$(basename "$file")
+          target="$shellOverridesTarget/$filename"
+          if [ "$filename" = "main.lua" ]; then
+              # main.lua: keep existing (writable) copy so game mode state survives rebuild,
+              # but seed it from source if it doesn't exist yet
+              if [ ! -f "$target" ]; then
+                  $DRY_RUN_CMD cp "$file" "$target"
+                  $DRY_RUN_CMD chmod u+w "$target"
+              fi
+          else
+              # Everything else: symlink (read-only is fine)
+              if [ -e "$target" ] || [ -L "$target" ]; then
+                  $DRY_RUN_CMD rm -f "$target"
+              fi
+              $DRY_RUN_CMD ln -s "$file" "$target"
+          fi
       done
 
       # Fix Qt icon theme configuration to use OneUI-dark/OneUI-light with Papirus fallback
