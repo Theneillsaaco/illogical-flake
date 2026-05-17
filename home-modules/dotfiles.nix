@@ -154,7 +154,11 @@ in
       
       # Symlink custom siblings.
       "hypr/custom/env.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/env.lua";
-      "hypr/custom/execs.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/execs.lua";
+      # custom/execs.lua: generated so we can inject Nix store paths (e.g. kwallet-pam)
+      "hypr/custom/execs.lua".text = ''
+        -- KWallet PAM initialization (unlocks wallet on login)
+        hl.exec_once("${pkgs.kdePackages.kwallet-pam}/libexec/pam_kwallet_init")
+      '';
       "hypr/custom/general.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/general.lua";
       "hypr/custom/keybinds.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/keybinds.lua";
       "hypr/custom/rules.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/rules.lua";
