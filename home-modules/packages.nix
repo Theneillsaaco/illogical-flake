@@ -133,7 +133,7 @@ in
       kdePackages.plasma-workspace # Provides plasma-apply-colorscheme
       kdePackages.kde-cli-tools # Provides various KDE CLI utilities
       kdePackages.dolphin
-      kdePackages.kio-kio-extras
+      kdePackages.kio-extras
       kdePackages.polkit-kde-agent-1  # Polkit authentication agent
       kdePackages.kdialog  # Dialog prompts
       kdePackages.kirigami
