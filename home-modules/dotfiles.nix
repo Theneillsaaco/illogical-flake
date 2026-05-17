@@ -94,76 +94,88 @@ in
       # Hyprland Config
       # Use text/readFile to put the file in the HM generation directory
       # This ensures relative sources (like hyprland/env.conf) resolve to OUR patched files
-      "hypr/hyprland.conf".text = (builtins.readFile "${dotfilesSource}/dots/.config/hypr/hyprland.conf") + ''
+      "hypr/hyprland.lua".text = (builtins.readFile "${dotfilesSource}/dots/.config/hypr/hyprland.lua") + ''
         
-        # Load declarative plugins from the flake
-        source = plugins.conf
+        -- Load declarative plugins from the flake
+        if is_file_exists(HOME .. "/.config/hypr/plugins.lua") then
+          require("plugins")
+        end
       '';
       
-      # Generate plugins.conf with paths to installed plugins
-      "hypr/plugins.conf".text = lib.concatMapStrings (plugin: ''
-        plugin = ${plugin}/lib/lib${plugin.pname}.so
+      # Generate plugins.lua with paths to installed plugins
+      "hypr/plugins.lua".text = lib.concatMapStrings (plugin: ''
+        hl.plugin("${plugin}/lib/lib${plugin.pname}.so")
       '') cfg.hyprland.plugins;
-      
-      # Hyprland Environment - Patched to fix XDG_DATA_DIRS and define qsConfig EARLY
-      "hypr/hyprland/env.conf".text = ''
-        # --- Injected Environment by Illogical Impulse Flake ---
-        env = PATH,${config.home.homeDirectory}/.nix-profile/bin:/etc/profiles/per-user/${config.home.username}/bin:$PATH
-        env = XDG_DATA_DIRS,${config.home.homeDirectory}/.nix-profile/share:${config.home.homeDirectory}/.local/share:/etc/profiles/per-user/${config.home.username}/share:/run/current-system/sw/share:${config.home.homeDirectory}/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share:$XDG_DATA_DIRS
-        env = QT_PLUGIN_PATH,${config.home.homeDirectory}/.nix-profile/lib/qt-6/plugins:${config.home.homeDirectory}/.nix-profile/lib/plugins
-        env = QML2_IMPORT_PATH,${config.home.homeDirectory}/.nix-profile/lib/qt-6/qml
-        env = QT_WAYLAND_DISABLE_WINDOWDECORATION,1
-        env = QT_QPA_PLATFORMTHEME,gtk3
-        
-        # Define qsConfig for exec-once commands
-        $qsConfig = ${config.home.homeDirectory}/.config/quickshell/ii
-        env = qsConfig,${config.home.homeDirectory}/.config/quickshell/ii
 
-        # --- Original Environment Content ---
-        env = ELECTRON_OZONE_PLATFORM_HINT,auto
-        env = QT_QPA_PLATFORM, wayland
-        env = XDG_MENU_PREFIX, plasma-
-        env = ILLOGICAL_IMPULSE_VIRTUAL_ENV, ~/.local/state/quickshell/.venv
-        env = TERMINAL,kitty -1
-      '';
-
-      # Symlink other hyprland files individually
-      "hypr/hyprland/colors.conf".source = "${dotfilesSource}/dots/.config/hypr/hyprland/colors.conf";
-      "hypr/hyprland/execs.conf".source = "${dotfilesSource}/dots/.config/hypr/hyprland/execs.conf";
-      # Patch general.conf to remove obsolete hyprexpo options (enable_gesture, gesture_positive)
-      # These were removed from the hyprexpo plugin API and cause "Invalid value false for finger count" error
-      "hypr/hyprland/general.conf".text = builtins.replaceStrings
-        [ "enable_gesture = false" "gesture_positive = false" ]
-        [ "# enable_gesture = false  # Removed: obsolete hyprexpo option" "# gesture_positive = false  # Removed: obsolete hyprexpo option" ]
-        (builtins.readFile "${dotfilesSource}/dots/.config/hypr/hyprland/general.conf");
-      "hypr/hyprland/keybinds.conf".source = "${dotfilesSource}/dots/.config/hypr/hyprland/keybinds.conf";
-      "hypr/hyprland/rules.conf".source = "${dotfilesSource}/dots/.config/hypr/hyprland/rules.conf";
+      # Hyprland internal Lua modules (read-only, managed by dots)
+      "hypr/hyprland/lib".source = "${dotfilesSource}/dots/.config/hypr/hyprland/lib";
+      "hypr/hyprland/services".source = "${dotfilesSource}/dots/.config/hypr/hyprland/services";
+      "hypr/hyprland/shellOverrides".source = "${dotfilesSource}/dots/.config/hypr/hyprland/shellOverrides";
       "hypr/hyprland/scripts".source = "${dotfilesSource}/dots/.config/hypr/hyprland/scripts";
 
-      # Hyprland Custom Env - Reverted to direct source
-      "hypr/custom/env.conf".source = "${dotfilesSource}/dots/.config/hypr/custom/env.conf";
+      # Hyprland core Lua configs
+      "hypr/hyprland/colors.lua".source = "${dotfilesSource}/dots/.config/hypr/hyprland/colors.lua";
+      "hypr/hyprland/execs.lua".source = "${dotfilesSource}/dots/.config/hypr/hyprland/execs.lua";
+      "hypr/hyprland/general.lua".source = "${dotfilesSource}/dots/.config/hypr/hyprland/general.lua";
+      "hypr/hyprland/keybinds.lua".source = "${dotfilesSource}/dots/.config/hypr/hyprland/keybinds.lua";
+      "hypr/hyprland/rules.lua".source = "${dotfilesSource}/dots/.config/hypr/hyprland/rules.lua";
+      "hypr/hyprland/variables.lua".source = "${dotfilesSource}/dots/.config/hypr/hyprland/variables.lua";
 
-      # Symlink custom siblings
-      "hypr/custom/execs.conf".source = "${dotfilesSource}/dots/.config/hypr/custom/execs.conf";
-      "hypr/custom/general.conf".source = "${dotfilesSource}/dots/.config/hypr/custom/general.conf";
-      "hypr/custom/keybinds.conf".source = "${dotfilesSource}/dots/.config/hypr/custom/keybinds.conf";
-      "hypr/custom/rules.conf".source = "${dotfilesSource}/dots/.config/hypr/custom/rules.conf";
+      # Hyprland environment — patched to inject Nix-specific paths
+      # Original env.lua only sets XDG_DATA_DIRS for flatpak; we prepend Nix paths
+      "hypr/hyprland/env.lua".text = ''
+        -- --- Injected environment by Illogical Impulse Flake ---
+        local home = os.getenv("HOME")
+
+        -- Nix profile paths
+        hl.env("PATH",
+          home .. "/.nix-profile/bin:" ..
+          "/etc/profiles/per-user/${config.home.username}/bin:$PATH"
+        )
+        hl.env("XDG_DATA_DIRS",
+          home .. "/.nix-profile/share:" ..
+          home .. "/.local/share:" ..
+          "/etc/profiles/per-user/${config.home.username}/share:" ..
+          "/run/current-system/sw/share:" ..
+          home .. "/.local/share/flatpak/exports/share:" ..
+          "/var/lib/flatpak/exports/share:/usr/local/share:/usr/share:$XDG_DATA_DIRS"
+        )
+        hl.env("QT_PLUGIN_PATH",
+          home .. "/.nix-profile/lib/qt-6/plugins:" ..
+          home .. "/.nix-profile/lib/plugins"
+        )
+        hl.env("QML2_IMPORT_PATH", home .. "/.nix-profile/lib/qt-6/qml")
+        hl.env("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1")
+        hl.env("QT_QPA_PLATFORMTHEME", "gtk3")
+
+        -- qsConfig must be set early (exec commands reference it)
+        hl.env("qsConfig", home .. "/.config/quickshell/ii")
+
+        -- --- Original upstream environment ---
+        '' + (builtins.readFile "${dotfilesSource}/dots/.config/hypr/hyprland/env.lua");
+
+      # Custom Lua stubs — user-editable, placed so hyprland.lua can require them
+      "hypr/custom/env.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/env.lua";
+      "hypr/custom/execs.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/execs.lua";
+      "hypr/custom/general.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/general.lua";
+      "hypr/custom/keybinds.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/keybinds.lua";
+      "hypr/custom/rules.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/rules.lua";
+      "hypr/custom/variables.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/variables.lua";
       "hypr/custom/scripts".source = "${dotfilesSource}/dots/.config/hypr/custom/scripts";
+
+      # Hyprlock & Hypridle (.conf still used by those tools, unchanged)
       "hypr/hyprlock".source = "${dotfilesSource}/dots/.config/hypr/hyprlock";
       "hypr/hypridle.conf".source = "${dotfilesSource}/dots/.config/hypr/hypridle.conf";
       "hypr/hyprlock.conf".source = "${dotfilesSource}/dots/.config/hypr/hyprlock.conf";
-      "hypr/monitors.conf".source = "${dotfilesSource}/dots/.config/hypr/monitors.conf";
-      "hypr/workspaces.conf".source = "${dotfilesSource}/dots/.config/hypr/workspaces.conf";
 
-      # kdeglobals handled in activation script
-      # "kdeglobals".source = "${dotfilesSource}/dots/.config/kdeglobals";
-      
+      # ── Rest of dotfiles (unchanged from previous version) ───────────────
       "kde-material-you-colors".source = "${dotfilesSource}/dots/.config/kde-material-you-colors";
       "kitty".source = "${dotfilesSource}/dots/.config/kitty";
       "konsolerc".source = "${dotfilesSource}/dots/.config/konsolerc";
       "Kvantum".source = "${dotfilesSource}/dots/.config/Kvantum";
       "matugen".source = "${dotfilesSource}/dots/.config/matugen";
       "mpv".source = "${dotfilesSource}/dots/.config/mpv";
+
       
       # Patch QuickShell scripts to fix shebangs (e.g., #!/bin/bash -> #!/nix/store/.../bash)
       "quickshell".source = pkgs.runCommand "quickshell-patched" { 
@@ -224,57 +236,42 @@ in
 
     # Use activation script ONLY for stateful integration
     home.activation.copyIllogicalImpulseConfigs = config.lib.dag.entryAfter ["writeBoundary"] ''
-      # Path to the config directory in the dotfiles source
       configPath="${dotfilesSource}/dots/.config"
       targetPath="$HOME/.config"
 
-      # Create illogical-impulse directory structure if it doesn't exist (Stateful config)
+      # illogical-impulse stateful config
       $DRY_RUN_CMD mkdir -p "$targetPath/illogical-impulse"
-
-      # Copy the default config.json only if it doesn't already exist
       if [ ! -f "$targetPath/illogical-impulse/config.json" ]; then
         if [ -f "$configPath/illogical-impulse/config.json" ]; then
           $DRY_RUN_CMD cp "$configPath/illogical-impulse/config.json" "$targetPath/illogical-impulse/config.json"
           $DRY_RUN_CMD chmod u+w "$targetPath/illogical-impulse/config.json"
         fi
       fi
-      
-      # Handle kdeglobals (Mutable copy)
-      # If it's a symlink (likely from previous HM generation), remove it first
+
+      # kdeglobals (mutable copy — scripts need to write to it)
       if [ -L "$targetPath/kdeglobals" ]; then
           $DRY_RUN_CMD rm "$targetPath/kdeglobals"
       fi
-
-      # We copy it if it doesn't exist (or was just removed), to allow scripts to modify it
       if [ ! -f "$targetPath/kdeglobals" ]; then
          if [ -f "$configPath/kdeglobals" ]; then
              $DRY_RUN_CMD cp "$configPath/kdeglobals" "$targetPath/kdeglobals"
              $DRY_RUN_CMD chmod u+w "$targetPath/kdeglobals"
          fi
       else
-         # Ensure it's writable even if it exists
          $DRY_RUN_CMD chmod u+w "$targetPath/kdeglobals"
       fi
 
-      # Handle konsole directory (Mutable directory with managed files)
+      # Konsole profile directory (mutable)
       konsoleTarget="$HOME/.local/share/konsole"
       konsoleSource="${dotfilesSource}/dots/.local/share/konsole"
-
-      # If it is a symlink (from previous HM generation), remove it
       if [ -L "$konsoleTarget" ]; then
           $DRY_RUN_CMD rm "$konsoleTarget"
       fi
-
-      # Ensure directory exists
       if [ ! -d "$konsoleTarget" ]; then
           $DRY_RUN_CMD mkdir -p "$konsoleTarget"
       fi
-
-      # Sync files (copy managed files into the mutable directory and make writable)
       for file in "$konsoleSource"/*; do
           filename=$(basename "$file")
-          # Copy (force overwrite) instead of symlink so the file itself is mutable
-          # Use rm first to avoid "same file" errors if it was a hardlink or symlink previously
           if [ -e "$konsoleTarget/$filename" ]; then
               $DRY_RUN_CMD rm -f "$konsoleTarget/$filename"
           fi
@@ -282,11 +279,9 @@ in
           $DRY_RUN_CMD chmod u+w "$konsoleTarget/$filename"
       done
 
-      # Fix Qt icon theme configuration to use OneUI-dark/OneUI-light with Papirus fallback
-      # This is still needed because qt6ct might be generating its config
+      # Fix Qt icon theme config
       for qt_conf in "$targetPath/qt5ct/qt5ct.conf" "$targetPath/qt6ct/qt6ct.conf"; do
         if [ -f "$qt_conf" ]; then
-          # Replace OneUI with OneUI-dark, OneUI-light stays as-is
           $DRY_RUN_CMD sed -i 's/^icon_theme=OneUI$/icon_theme=OneUI-dark/' "$qt_conf"
           $DRY_RUN_CMD sed -i 's/^icon_theme=OneUI-light$/icon_theme=OneUI-light/' "$qt_conf"
         fi
