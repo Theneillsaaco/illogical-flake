@@ -88,9 +88,20 @@ in
       "code-flags.conf".source = "${dotfilesSource}/dots/.config/code-flags.conf";
       "darklyrc".source = "${dotfilesSource}/dots/.config/darklyrc";
       "dolphinrc".source = "${dotfilesSource}/dots/.config/dolphinrc";
-      "foot".source = "${dotfilesSource}/dots/.config/foot";
+      "foot".source = pkgs.runCommand "illogical-foot-config" {} ''
+        cp -r ${dotfilesSource}/dots/.config/foot $out
+        chmod -R u+w $out
+        substituteInPlace $out/foot.ini \
+          --replace-fail "font=JetBrainsMono Nerd Font:size=11" "font=JetBrainsMono Nerd Font:size=14" \
+          --replace-fail "pad=25x25" "pad=25x25
+
+            [colors]
+            alpha=0.85" \
+          --replace-fail "clipboard-copy=Control+c" "clipboard-copy=Control+Shift+c" \
+          --replace-fail "clipboard-paste=Control+v" "clipboard-paste=Control+Shift+v" \
+          --replace-fail "\x03=Control+Shift+c" "\x03=Control+c"
+      '';
       "fuzzel".source = "${dotfilesSource}/dots/.config/fuzzel";
-      
       # Hyprland Config
       # Use text/readFile to put the file in the HM generation directory
       # This ensures relative sources (like hyprland/env.conf) resolve to OUR patched files
@@ -107,54 +118,38 @@ in
         hl.plugin("${plugin}/lib/lib${plugin.pname}.so")
       '') cfg.hyprland.plugins;
 
-      # Hyprland internal Lua modules (read-only, managed by dots)
-      "hypr/hyprland/lib".source = "${dotfilesSource}/dots/.config/hypr/hyprland/lib";
-      "hypr/hyprland/services".source = "${dotfilesSource}/dots/.config/hypr/hyprland/services";
-      "hypr/hyprland/shellOverrides".source = "${dotfilesSource}/dots/.config/hypr/hyprland/shellOverrides";
-      "hypr/hyprland/scripts".source = "${dotfilesSource}/dots/.config/hypr/hyprland/scripts";
+      # Hyprland Environment - patched for Nix profile paths and Qt/QML lookup.
+      "hypr/hyprland/env.lua".text = ''
+        local home_dir = os.getenv("HOME")
 
-      # Hyprland core Lua configs
+        -- Injected environment by Illogical Impulse Flake
+        hl.env("PATH", "${config.home.homeDirectory}/.nix-profile/bin:/etc/profiles/per-user/${config.home.username}/bin:/run/wrappers/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:/usr/bin:/bin")
+        hl.env("XDG_DATA_DIRS", "${config.home.homeDirectory}/.nix-profile/share:${config.home.homeDirectory}/.local/share:/etc/profiles/per-user/${config.home.username}/share:/run/current-system/sw/share:${config.home.homeDirectory}/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share")
+        hl.env("QT_PLUGIN_PATH", "${config.home.homeDirectory}/.nix-profile/lib/qt-6/plugins:${config.home.homeDirectory}/.nix-profile/lib/plugins")
+        hl.env("QML2_IMPORT_PATH", "${config.home.homeDirectory}/.nix-profile/lib/qt-6/qml")
+        hl.env("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1")
+
+        -- Original environment content
+        hl.env("ELECTRON_OZONE_PLATFORM_HINT", "auto")
+        hl.env("QT_QPA_PLATFORM", "wayland;xcb")
+        hl.env("QT_QPA_PLATFORMTHEME", "kde")
+        hl.env("XDG_MENU_PREFIX", "plasma-")
+        hl.env("ILLOGICAL_IMPULSE_VIRTUAL_ENV", home_dir .. "/.local/state/quickshell/.venv")
+      '';
+
+      # Symlink other hyprland Lua files individually.
       "hypr/hyprland/colors.lua".source = "${dotfilesSource}/dots/.config/hypr/hyprland/colors.lua";
       "hypr/hyprland/execs.lua".source = "${dotfilesSource}/dots/.config/hypr/hyprland/execs.lua";
       "hypr/hyprland/general.lua".source = "${dotfilesSource}/dots/.config/hypr/hyprland/general.lua";
       "hypr/hyprland/keybinds.lua".source = "${dotfilesSource}/dots/.config/hypr/hyprland/keybinds.lua";
       "hypr/hyprland/rules.lua".source = "${dotfilesSource}/dots/.config/hypr/hyprland/rules.lua";
       "hypr/hyprland/variables.lua".source = "${dotfilesSource}/dots/.config/hypr/hyprland/variables.lua";
+      "hypr/hyprland/lib".source = "${dotfilesSource}/dots/.config/hypr/hyprland/lib";
+      "hypr/hyprland/services".source = "${dotfilesSource}/dots/.config/hypr/hyprland/services";
+      "hypr/hyprland/shellOverrides".source = "${dotfilesSource}/dots/.config/hypr/hyprland/shellOverrides";
+      "hypr/hyprland/scripts".source = "${dotfilesSource}/dots/.config/hypr/hyprland/scripts";
 
-      # Hyprland environment — patched to inject Nix-specific paths
-      # Original env.lua only sets XDG_DATA_DIRS for flatpak; we prepend Nix paths
-      "hypr/hyprland/env.lua".text = ''
-        -- --- Injected environment by Illogical Impulse Flake ---
-        local home = os.getenv("HOME")
-
-        -- Nix profile paths
-        hl.env("PATH",
-          home .. "/.nix-profile/bin:" ..
-          "/etc/profiles/per-user/${config.home.username}/bin:$PATH"
-        )
-        hl.env("XDG_DATA_DIRS",
-          home .. "/.nix-profile/share:" ..
-          home .. "/.local/share:" ..
-          "/etc/profiles/per-user/${config.home.username}/share:" ..
-          "/run/current-system/sw/share:" ..
-          home .. "/.local/share/flatpak/exports/share:" ..
-          "/var/lib/flatpak/exports/share:/usr/local/share:/usr/share:$XDG_DATA_DIRS"
-        )
-        hl.env("QT_PLUGIN_PATH",
-          home .. "/.nix-profile/lib/qt-6/plugins:" ..
-          home .. "/.nix-profile/lib/plugins"
-        )
-        hl.env("QML2_IMPORT_PATH", home .. "/.nix-profile/lib/qt-6/qml")
-        hl.env("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1")
-        hl.env("QT_QPA_PLATFORMTHEME", "gtk3")
-
-        -- qsConfig must be set early (exec commands reference it)
-        hl.env("qsConfig", home .. "/.config/quickshell/ii")
-
-        -- --- Original upstream environment ---
-        '' + (builtins.readFile "${dotfilesSource}/dots/.config/hypr/hyprland/env.lua");
-
-      # Custom Lua stubs — user-editable, placed so hyprland.lua can require them
+      # Symlink custom siblings.
       "hypr/custom/env.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/env.lua";
       "hypr/custom/execs.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/execs.lua";
       "hypr/custom/general.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/general.lua";
@@ -162,20 +157,26 @@ in
       "hypr/custom/rules.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/rules.lua";
       "hypr/custom/variables.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/variables.lua";
       "hypr/custom/scripts".source = "${dotfilesSource}/dots/.config/hypr/custom/scripts";
-
-      # Hyprlock & Hypridle (.conf still used by those tools, unchanged)
       "hypr/hyprlock".source = "${dotfilesSource}/dots/.config/hypr/hyprlock";
       "hypr/hypridle.conf".source = "${dotfilesSource}/dots/.config/hypr/hypridle.conf";
       "hypr/hyprlock.conf".source = "${dotfilesSource}/dots/.config/hypr/hyprlock.conf";
 
-      # ── Rest of dotfiles (unchanged from previous version) ───────────────
+      # kdeglobals handled in activation script
+      # "kdeglobals".source = "${dotfilesSource}/dots/.config/kdeglobals";
+      
       "kde-material-you-colors".source = "${dotfilesSource}/dots/.config/kde-material-you-colors";
-      "kitty".source = "${dotfilesSource}/dots/.config/kitty";
+      "kitty".source = pkgs.runCommand "illogical-kitty-config" {} ''
+        cp -r ${dotfilesSource}/dots/.config/kitty $out
+        chmod -R u+w $out
+        substituteInPlace $out/kitty.conf \
+          --replace-fail "font_size 11.0" "font_size 14.0
+
+          background_opacity 0.85"
+      '';
       "konsolerc".source = "${dotfilesSource}/dots/.config/konsolerc";
       "Kvantum".source = "${dotfilesSource}/dots/.config/Kvantum";
       "matugen".source = "${dotfilesSource}/dots/.config/matugen";
       "mpv".source = "${dotfilesSource}/dots/.config/mpv";
-
       
       # Patch QuickShell scripts to fix shebangs (e.g., #!/bin/bash -> #!/nix/store/.../bash)
       "quickshell".source = pkgs.runCommand "quickshell-patched" { 
@@ -191,8 +192,48 @@ in
         # The complex shebang tried to source a venv, but we provide pythonEnv directly via Nix
         find $out -name "*.py" -print0 | xargs -0 sed -i 's|^#!.*ILLOGICAL_IMPULSE_VIRTUAL_ENV.*|#!/usr/bin/env python3|'
         
-        # Suppress permission errors when writing to /dev/pts in applycolor.sh
-        sed -i 's|/dev/pts/\*|/dev/pts/* 2>/dev/null|' $out/ii/scripts/colors/applycolor.sh
+        # Suppress permission errors when writing color sequences to other TTYs.
+        substituteInPlace $out/ii/scripts/colors/applycolor.sh \
+          --replace-fail '      } & disown || true' \
+                         '      } 2>/dev/null & disown || true'
+        substituteInPlace $out/ii/scripts/colors/applycolor.sh \
+          --replace-fail 'term_alpha=100 #Set this to < 100 make all your terminals transparent' \
+                         'term_alpha=85 # Set this to < 100 make all your terminals transparent'
+        substituteInPlace $out/ii/scripts/colors/terminal/sequences.txt \
+          --replace-fail '[100]#$term0 #' '[$alpha]#$term0 #'
+
+        # Match freedesktop thumbnail cache URIs for non-ASCII/spaced paths.
+        substituteInPlace $out/ii/modules/common/widgets/ThumbnailImage.qml \
+          --replace-fail 'const resolvedUrlWithoutFileProtocol = FileUtils.trimFileProtocol(`''${Qt.resolvedUrl(sourcePath)}`);' \
+                         'const decodedPath = decodeURIComponent(FileUtils.trimFileProtocol(`''${sourcePath}`));' \
+          --replace-fail 'const encodedUrlWithoutFileProtocol = resolvedUrlWithoutFileProtocol.split("/").map(part => encodeURIComponent(part)).join("/");' \
+                         'const encodedUrlWithoutFileProtocol = decodedPath.split("/").map(part => encodeURIComponent(part)).join("/");' \
+          --replace-fail 'source: thumbnailPath' \
+                         'source: thumbnailPath
+                         fallbacks: sourcePath.length > 0 ? [`''${Qt.resolvedUrl(sourcePath)}`] : []'
+
+        for script in random_konachan_wall.sh random_osu_wall.sh; do
+          substituteInPlace $out/ii/scripts/colors/random/$script \
+            --replace-fail '    if command -v xdg-user-dir &> /dev/null; then
+                xdg-user-dir PICTURES
+                return
+            fi' \
+                           '    if command -v xdg-user-dir &> /dev/null; then
+        local pictures_dir
+        pictures_dir=$(xdg-user-dir PICTURES)
+        if [ -n "$pictures_dir" ] && [ "$pictures_dir" != "$HOME" ]; then
+            echo "$pictures_dir"
+            return
+        fi
+        fi' \
+            --replace-fail 'mkdir -p "$PICTURES_DIR/Wallpapers"' \
+                           'mkdir -p "$PICTURES_DIR/Wallpapers"' \
+            --replace-fail 'curl "$link" -o "$downloadPath"' \
+                           'if [ -z "$link" ] || [ "$link" = "null" ]; then
+                               exit 1
+                            fi
+                            curl -fL --retry 2 "$link" -o "$downloadPath"'
+        done
 
         patchShebangs $out
       '';
@@ -236,42 +277,57 @@ in
 
     # Use activation script ONLY for stateful integration
     home.activation.copyIllogicalImpulseConfigs = config.lib.dag.entryAfter ["writeBoundary"] ''
+      # Path to the config directory in the dotfiles source
       configPath="${dotfilesSource}/dots/.config"
       targetPath="$HOME/.config"
 
-      # illogical-impulse stateful config
+      # Create illogical-impulse directory structure if it doesn't exist (Stateful config)
       $DRY_RUN_CMD mkdir -p "$targetPath/illogical-impulse"
+
+      # Copy the default config.json only if it doesn't already exist
       if [ ! -f "$targetPath/illogical-impulse/config.json" ]; then
         if [ -f "$configPath/illogical-impulse/config.json" ]; then
           $DRY_RUN_CMD cp "$configPath/illogical-impulse/config.json" "$targetPath/illogical-impulse/config.json"
           $DRY_RUN_CMD chmod u+w "$targetPath/illogical-impulse/config.json"
         fi
       fi
-
-      # kdeglobals (mutable copy — scripts need to write to it)
+      
+      # Handle kdeglobals (Mutable copy)
+      # If it's a symlink (likely from previous HM generation), remove it first
       if [ -L "$targetPath/kdeglobals" ]; then
           $DRY_RUN_CMD rm "$targetPath/kdeglobals"
       fi
+
+      # We copy it if it doesn't exist (or was just removed), to allow scripts to modify it
       if [ ! -f "$targetPath/kdeglobals" ]; then
          if [ -f "$configPath/kdeglobals" ]; then
              $DRY_RUN_CMD cp "$configPath/kdeglobals" "$targetPath/kdeglobals"
              $DRY_RUN_CMD chmod u+w "$targetPath/kdeglobals"
          fi
       else
+         # Ensure it's writable even if it exists
          $DRY_RUN_CMD chmod u+w "$targetPath/kdeglobals"
       fi
 
-      # Konsole profile directory (mutable)
+      # Handle konsole directory (Mutable directory with managed files)
       konsoleTarget="$HOME/.local/share/konsole"
       konsoleSource="${dotfilesSource}/dots/.local/share/konsole"
+
+      # If it is a symlink (from previous HM generation), remove it
       if [ -L "$konsoleTarget" ]; then
           $DRY_RUN_CMD rm "$konsoleTarget"
       fi
+
+      # Ensure directory exists
       if [ ! -d "$konsoleTarget" ]; then
           $DRY_RUN_CMD mkdir -p "$konsoleTarget"
       fi
+
+      # Sync files (copy managed files into the mutable directory and make writable)
       for file in "$konsoleSource"/*; do
           filename=$(basename "$file")
+          # Copy (force overwrite) instead of symlink so the file itself is mutable
+          # Use rm first to avoid "same file" errors if it was a hardlink or symlink previously
           if [ -e "$konsoleTarget/$filename" ]; then
               $DRY_RUN_CMD rm -f "$konsoleTarget/$filename"
           fi
@@ -279,9 +335,11 @@ in
           $DRY_RUN_CMD chmod u+w "$konsoleTarget/$filename"
       done
 
-      # Fix Qt icon theme config
+      # Fix Qt icon theme configuration to use OneUI-dark/OneUI-light with Papirus fallback
+      # This is still needed because qt6ct might be generating its config
       for qt_conf in "$targetPath/qt5ct/qt5ct.conf" "$targetPath/qt6ct/qt6ct.conf"; do
         if [ -f "$qt_conf" ]; then
+          # Replace OneUI with OneUI-dark, OneUI-light stays as-is
           $DRY_RUN_CMD sed -i 's/^icon_theme=OneUI$/icon_theme=OneUI-dark/' "$qt_conf"
           $DRY_RUN_CMD sed -i 's/^icon_theme=OneUI-light$/icon_theme=OneUI-light/' "$qt_conf"
         fi

@@ -14,6 +14,7 @@ let
     ps.cffi
     ps.click
     ps."dbus-python"
+    ps."google-auth"
     ps."kde-material-you-colors"
     ps.libsass
     ps.loguru
@@ -25,6 +26,7 @@ let
     ps.pycairo
     ps.pygobject3
     ps.pywayland
+    ps.requests
     ps.setproctitle
     ps."setuptools-scm"
     ps.tqdm
@@ -97,6 +99,7 @@ in
       hyprlock
       hypridle
       hyprsunset
+      hyprland-qtutils
       wayland-protocols
       wl-clipboard
 
@@ -129,6 +132,8 @@ in
       kdePackages.plasma-nm  # Network management (for kcm_networkmanagement)
       kdePackages.plasma-workspace # Provides plasma-apply-colorscheme
       kdePackages.kde-cli-tools # Provides various KDE CLI utilities
+      kdePackages.dolphin
+      kdePackages.kio-kio-extras
       kdePackages.polkit-kde-agent-1  # Polkit authentication agent
       kdePackages.kdialog  # Dialog prompts
       kdePackages.kirigami
