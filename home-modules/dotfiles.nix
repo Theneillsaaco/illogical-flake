@@ -157,7 +157,9 @@ in
       # custom/execs.lua: generated so we can inject Nix store paths (e.g. kwallet-pam)
       "hypr/custom/execs.lua".text = ''
         -- KWallet PAM initialization (unlocks wallet on login)
-        hl.exec_once("${pkgs.kdePackages.kwallet-pam}/libexec/pam_kwallet_init")
+        hl.on("hyprland.start", function()
+          hl.exec_cmd("${pkgs.kdePackages.kwallet-pam}/libexec/pam_kwallet_init")
+        end)
       '';
       "hypr/custom/general.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/general.lua";
       "hypr/custom/keybinds.lua".source = "${dotfilesSource}/dots/.config/hypr/custom/keybinds.lua";
